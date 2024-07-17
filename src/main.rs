@@ -115,7 +115,7 @@ fn base_env() -> Env {
     env.insert(
         "describe-env".to_string(),
         Func(|_, env| {
-            println!("Inspection: {:?}", env["N"]);
+            println!("Inspection: {:?}", env);
             Ok(List(vec![]))
         })
     );
@@ -397,7 +397,7 @@ fn eval(exp: &Exp, env: &mut Env) -> Result<Exp, LispErr> {
                     // Hacemos esto porque no podemos tener closures que capturan entorno mutable en rust de forma segura sin implementar
                     // garbage collection. Si hiciesemos que el entorno que reciben las funciones fuese inmutable tendríamos que cambiar
                     // todo el código del evaluador.
-                    let mut prev_env = env.clone();
+                    let prev_env = env.clone();
                     let res = lambda.call(&arg_list, env);
                     *env = prev_env;
                     res
@@ -422,7 +422,6 @@ pub fn main() {
    (def identity (lambda (t) t))
 
    (defun fibonacci (N)
-       (describe-env)
        (if (or (= N 0) (= N 1))
            1
            (+ (fibonacci (- N 1)) (fibonacci (- N 2)))))
@@ -430,6 +429,7 @@ pub fn main() {
    (defun x (l) (print (identity l)) (x (+ l 1)))
    (fibonacci 5)
    )";
+    // (describe-env)
 
     let tokens = tokenize(program.into());
 
