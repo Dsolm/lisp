@@ -40,8 +40,6 @@ impl Lambda {
     }
 }
 
-
-
 #[derive (Clone, Debug)]
 enum Exp {
     // T,
@@ -52,6 +50,7 @@ enum Exp {
     // Quote(Box<Exp>),
     Func(fn(&[Exp], &mut Env) -> Result<Exp, LispErr>),
     Macro(fn(&[Exp], &mut Env) -> Result<Vec<Exp>, LispErr>),
+    Bool(bool),
 } 
 
 type Env = HashMap<String, Exp>;
@@ -85,10 +84,47 @@ fn base_env() -> Env {
     );
 
     env.insert(
+        "-".to_string(), 
+        Func(
+            |args: &[Exp], _: &mut Env| -> Result<Exp, LispErr> {
+
+                if let Some((first, rest)) = args.split_first() {
+                    let first = match first {
+                        Num(n) => n,
+                        _ => return Err("- arg is not num".into())
+                    };
+
+                    let x = rest.iter().try_fold(*first, |acc, x| {
+                        match x {
+                            Num(n) =>  Ok::<i32, LispErr>(acc - n),
+                            _ => Err("invalid - argument".into())
+                        }
+                    })?;
+                    Ok(Num(x))
+                } else {
+                    Err("invalid arguments to -".into())
+                }
+
+
+            }
+        )
+    );
+
+    env.insert("nil".to_string(), Bool(false));
+
+    env.insert(
+        "describe-env".to_string(),
+        Func(|_, env| {
+            println!("Inspection: {:?}", env["N"]);
+            Ok(List(vec![]))
+        })
+    );
+
+    env.insert(
         "*".to_string(), 
         Func(
             |args: &[Exp], _: &mut Env| -> Result<Exp, LispErr> {
-                let x = args.iter().try_fold(0, |acc, x| {
+                let x = args.iter().try_fold(1, |acc, x| {
                     match x {
                         Num(n) =>  Ok::<i32, LispErr>(acc * n),
                         _ => Err("invalid + argument".into())
@@ -122,18 +158,18 @@ fn base_env() -> Env {
         )
     );
 
-    // env.insert(
-    //     "def".to_string(),
-    //     Macro(
-    //         |args, env| {
-    //             if args.len() != 2 {
-    //                 return Err("Wrong number of arguments to def".into());
-    //             }
-    //             set_symbol(env, &args[0], &args[1])?;
-    //             Ok(vec![])
-    //         }
-    //     )
-    // );
+    env.insert(
+        "def".to_string(),
+        Macro(
+            |args, env| {
+                if args.len() != 2 {
+                    return Err("Wrong number of arguments to def".into());
+                }
+                set_symbol(env, &args[0], &args[1])?;
+                Ok(vec![])
+            }
+        )
+    );
 
     // env.insert(
     //     "set".to_string(),
@@ -178,6 +214,73 @@ fn base_env() -> Env {
     );
 
     env.insert(
+        "if".to_string(),
+        Macro(
+            |args, env| {
+                let evaled = eval(&args[0], env)?;
+                let is_false = match evaled {
+                    Bool(false) => true,
+                    _ => false,
+                };
+
+                if is_false {
+                    Ok(vec![args[2].clone()])
+                } else {
+                    Ok(vec![args[1].clone()])
+                }
+            })
+    );
+
+    env.insert(
+        "or".to_string(),
+        Func(
+            |args, _| {
+                if args.is_empty() {
+                    return Err("or with empty args".into());
+                }
+
+                for arg in args {
+                    let x: bool = match arg {
+                        Bool(x) => *x,
+                        _ => return Err("or argument is not bool".into()),
+                    };
+                    if x == true {
+                        return Ok(Bool(true));
+                    }
+                }
+                Ok(Bool(false))
+            }
+        )
+    );
+
+
+    env.insert(
+        "=".to_string(),
+        Func(
+            |args, _| {
+                if args.is_empty() {
+                    return Err("no arguments".into());
+                }
+
+                let first: i32 = match args[0] {
+                    Num(n) => n,
+                    _ => return Err("= arg is not a number".into()),
+                };
+
+
+                let equal = args.iter().all(|x| {
+                    match x {
+                        Num(n) => *n == first,
+                        _ => panic!("= arg is not a number"),
+                    }
+                });
+
+                Ok(Bool(equal))
+            }
+        )
+    );
+
+    env.insert(
         "lambda".to_string(),
         Macro(
             |args, _| {
@@ -200,24 +303,18 @@ fn base_env() -> Env {
                     return Err("Invalid lambda list".into());
                 }
             }
-
         )
     );
     
     // env.insert(
     //     "eval".to_string(), 
     //     Func(
-    //         Rc::new(
-    //             |args, _| {
-    //                 let x = args.iter().try_fold(0, |acc, x| {
-    //                     match x {
-    //                         Num(n) =>  Ok::<i32, LispErr>(acc + n),
-    //                         _ => Err("invalid + argument".into())
-    //                     }
-    //                 })?;
-    //                 Ok(Num(x))
-    //             }))
+    //         |args, env| {
+    //             eval(&args[0], env)?;
+    //         }
+    //     )
     // );
+
     env
 }
 
@@ -294,7 +391,16 @@ fn eval(exp: &Exp, env: &mut Env) -> Result<Exp, LispErr> {
                     for exp in rest {
                         arg_list.push(eval(exp, env)?);
                     }
-                    lambda.call(&arg_list, env)
+
+                    // Esto está muy mal. Además de no ser eficiente hace que las lambdas no puedan modificar el entorno, pero 
+                    // Pero las lambdas siguen estando implementadas como si sí que pudiesen.
+                    // Hacemos esto porque no podemos tener closures que capturan entorno mutable en rust de forma segura sin implementar
+                    // garbage collection. Si hiciesemos que el entorno que reciben las funciones fuese inmutable tendríamos que cambiar
+                    // todo el código del evaluador.
+                    let mut prev_env = env.clone();
+                    let res = lambda.call(&arg_list, env);
+                    *env = prev_env;
+                    res
                 },
                 Macro(macr) => {
                     let macroexpand = macr(rest, env)?;
@@ -311,9 +417,19 @@ fn eval(exp: &Exp, env: &mut Env) -> Result<Exp, LispErr> {
 pub fn main() {
     let program =
 "(progn
-   (+ (+ 1 1 1 1 1 1) (+ (+ 1 1) (+ 1 1)))
-   (defun x (l) (print l) (x (+ l 1)))
-   (x 123))";
+   (print (* (* 1 1 1 (+ 1 1) 1 1) (* (* 1 1) (* 1 1))))
+
+   (def identity (lambda (t) t))
+
+   (defun fibonacci (N)
+       (describe-env)
+       (if (or (= N 0) (= N 1))
+           1
+           (+ (fibonacci (- N 1)) (fibonacci (- N 2)))))
+
+   (defun x (l) (print (identity l)) (x (+ l 1)))
+   (fibonacci 5)
+   )";
 
     let tokens = tokenize(program.into());
 
