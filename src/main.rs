@@ -41,8 +41,6 @@ impl Lambda {
 }
 
 
-use std::rc::Rc;
-use std::cell::RefCell;
 
 #[derive (Clone, Debug)]
 enum Exp {
@@ -168,8 +166,7 @@ fn base_env() -> Env {
                     };
 
                     let body = Vec::from(&args[2..]);
-                    let mut lambda = Lambda(Lambda::new(llist, body));
-                    _ = set_symbol(env, &args[0], &lambda);
+                    _ = set_symbol(env, &args[0], &Lambda(Lambda::new(llist, body)));
 
                     Ok(vec![])
                 } else {
@@ -183,7 +180,7 @@ fn base_env() -> Env {
     env.insert(
         "lambda".to_string(),
         Macro(
-            |args, env| {
+            |args, _| {
                 if let List(lambda_list) = &args[0] {
                     let mut llist: Vec<String> = vec![];
                     for arg in lambda_list {
@@ -317,7 +314,6 @@ pub fn main() {
    (+ (+ 1 1 1 1 1 1) (+ (+ 1 1) (+ 1 1)))
    (defun x (l) (print l) (x (+ l 1)))
    (x 123))";
-    // let mut tokens = tokenize(program);
 
     let tokens = tokenize(program.into());
 
@@ -328,12 +324,4 @@ pub fn main() {
     let res = eval(&tree, &mut env);
 
     println!("Result: {res:?}");
-
-    // let x = &env["x"];
-    // if let Lambda(la) = x {
-    //     let exps = &la.borrow().exps;
-    //     println!("Body: {exps:?}");
-    //     println!("Lambda: {la:?}");
-    // };
-
 }
