@@ -391,12 +391,12 @@ fn eval(exp: &Exp, env: &mut Env) -> Result<Exp, LispErr> {
                     for exp in rest {
                         arg_list.push(eval(exp, env)?);
                     }
-
                     // Esto está muy mal. Además de no ser eficiente hace que las lambdas no puedan modificar el entorno, pero 
                     // Pero las lambdas siguen estando implementadas como si sí que pudiesen.
                     // Hacemos esto porque no podemos tener closures que capturan entorno mutable en rust de forma segura sin implementar
                     // garbage collection. Si hiciesemos que el entorno que reciben las funciones fuese inmutable tendríamos que cambiar
                     // todo el código del evaluador.
+                    // Se podría mejorar un poco usando Cow
                     let prev_env = env.clone();
                     let res = lambda.call(&arg_list, env);
                     *env = prev_env;
