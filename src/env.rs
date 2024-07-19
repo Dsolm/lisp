@@ -1,6 +1,7 @@
-use crate::eval::{eval_many, eval};
-use crate::exp::*;
+use crate::eval::{eval, eval_many};
 use crate::exp::Lambda;
+use crate::exp::*;
+use std::vec::Vec;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -51,15 +52,11 @@ impl Env {
     }
 }
 
-
-
-
 use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref TOPLEVEL: RwLock<HashMap<String, Exp>> = RwLock::new(init_toplevel());
 }
-
 
 fn init_toplevel() -> HashMap<String, Exp> {
     let mut env = HashMap::new();
@@ -132,28 +129,30 @@ fn init_toplevel() -> HashMap<String, Exp> {
         }),
     );
 
-
     // let mut arg_list = vec![];
     // for arg in args {
     //     arg_list.push(eval(arg, env)?);
     // }
     // lambda.call(arg_list, env)
 
-
     fn run_in_let(bindings: &Exp, body: &[Exp], upper_env: &Arc<Env>) -> Result<Exp, LispErr> {
         let List(bindings) = bindings else {
-             return Err(format!("Expected let binding list, found {:?}", bindings).into());
+            return Err(format!("Expected let binding list, found {:?}", bindings).into());
         };
 
         let mut let_env = Env::from_upper(upper_env);
 
         for binding in bindings {
             let List(binding) = binding else {
-                return Err("Let bindings should have this format ((name value) (name value)...)".into());
+                return Err(
+                    "Let bindings should have this format ((name value) (name value)...)".into(),
+                );
             };
 
             if binding.len() != 2 {
-                return Err("Let bindings should have this format ((name value) (name value)...)".into());
+                return Err(
+                    "Let bindings should have this format ((name value) (name value)...)".into(),
+                );
             }
 
             let Symbol(name) = &binding[0] else {

@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::exp::*;
-    use crate::eval::eval;
     use crate::env::Env;
-    use crate::tokenizer::tokenize;
+    use crate::eval::eval;
+    use crate::exp::*;
     use crate::parser::parse_tokens;
+    use crate::tokenizer::tokenize;
 
     use crate::*;
 

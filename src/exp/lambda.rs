@@ -1,14 +1,13 @@
 use core::fmt;
 use std::iter::zip;
 
-use crate::{exp::*, eval::eval_many};
+use crate::{eval::eval_many, exp::*};
 
 #[derive(Clone)]
 pub struct Lambda {
     args: Vec<String>,
     body: Vec<Exp>,
 }
-
 
 impl Lambda {
     pub fn new(args: Vec<String>, body: Vec<Exp>) -> Lambda {

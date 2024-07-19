@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
-pub mod tokenizer;
-pub mod tests;
-pub mod eval;
-pub mod exp; 
 pub mod env;
+pub mod eval;
+pub mod exp;
 pub mod parser;
+pub mod tests;
+pub mod tokenizer;
 
-use eval::eval;
 use env::Env;
-use tokenizer::tokenize;
+use eval::eval;
 use parser::parse_tokens;
-
+use tokenizer::tokenize;
 
 pub fn main() {
     let program = "(progn
@@ -32,10 +31,9 @@ pub fn main() {
    )";
     // (describe-env)
 
-   // (print (* (* 1 1 1 (+ 1 1) 1 1) (* (* 1 1) (* 1 1))))
+    // (print (* (* 1 1 1 (+ 1 1) 1 1) (* (* 1 1) (* 1 1))))
 
-   // (def identity (lambda (t) t))
-
+    // (def identity (lambda (t) t))
 
     let tokens = tokenize(program.into());
 
@@ -46,4 +44,3 @@ pub fn main() {
 
     println!("Result: {res:?}");
 }
-

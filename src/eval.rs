@@ -1,6 +1,6 @@
-use crate::exp::*;
 use crate::env::Env;
 use crate::exp::lambda::Lambda;
+use crate::exp::*;
 
 use std::sync::Arc;
 
