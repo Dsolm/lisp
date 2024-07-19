@@ -10,10 +10,10 @@ use list::dolist;
 use std::{error::Error, fmt, sync::Arc};
 
 pub type LispErr = Box<dyn Error>;
-pub type NativeFunction = fn(&[Exp]) -> Result<Exp, LispErr>;
+pub type NativeFunction = fn(&[Exp], &Arc<Env>) -> Result<Exp, LispErr>;
 pub type Macro = fn(&[Exp], &Arc<Env>) -> Result<Vec<Exp>, LispErr>;
-// Expressions should be trivially copiable.
-// In order to do that we need to implement Arc lists.
+
+
 #[derive(Clone, Debug)]
 pub enum Exp {
     List(Option<Arc<Cons>>),
@@ -21,7 +21,7 @@ pub enum Exp {
     Symbol(String),
     Str(String),
     Vector(Vec<Exp>),
-    Lambda(Lambda), // Too big.
+    Lambda(Lambda), 
     Func(NativeFunction),
     Macro(Macro),
     Bool(bool),

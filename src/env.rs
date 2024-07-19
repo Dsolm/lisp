@@ -1,4 +1,4 @@
-use crate::eval::{eval, eval_many};
+use crate::eval::{eval, eval_many, eval_lambda_call};
 use crate::exp::Lambda;
 use crate::exp::*;
 
@@ -12,8 +12,8 @@ use std::sync::{Arc, RwLock};
 #[derive(Debug)]
 pub struct Env {
     pub local: HashMap<String, Exp>,
-    upper: Option<Arc<Env>>, // arc because many different
-                             // processes can stem from one function call and share its state.
+    upper: Option<Arc<Env>>, 
+                             
 }
 
 impl Env {
@@ -76,7 +76,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
     let mut env = HashMap::new();
     env.insert(
         "+".into(),
-        Func(|args| {
+        Func(|args, _| {
             let x = args.iter().try_fold(0, |acc, x| match x {
                 Num(n) => Ok::<i64, LispErr>(acc + n),
                 _ => Err(format!("invalid + argument: {}", x).into()),
@@ -88,7 +88,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "-".into(),
-        Func(|args| {
+        Func(|args, _| {
             if let Some((first, rest)) = args.split_first() {
                 let first = match first {
                     Num(n) => n,
@@ -112,7 +112,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "*".into(),
-        Func(|args| {
+        Func(|args, _| {
             let x = args.iter().try_fold(1, |acc, x| match x {
                 Num(n) => Ok::<i64, LispErr>(acc * n),
                 _ => Err("invalid + argument".into()),
@@ -124,7 +124,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "print".into(),
-        Func(|args| {
+        Func(|args, _| {
             for arg in args.iter() {
                 println!("{arg}");
             }
@@ -133,6 +133,41 @@ fn init_toplevel() -> HashMap<String, Exp> {
     );
 
     env.insert("progn".into(), Macro(|args, _| Ok(args.to_vec())));
+
+    env.insert(
+        "thread/spawn".into(),
+        Func(|args, env| {
+            use std::thread;
+            let Lambda(lambda) = &args[0] else {
+                return Err("thread/spawn param is not a function".into());
+            };
+            let lambda = lambda.clone();
+            let env = env.clone();
+            thread::spawn(move || {
+                let _ = eval_lambda_call(&lambda, &vec![], &env);
+            });
+            Ok(List(None))
+        })
+    );
+
+    env.insert(
+        "dotimes".into(),
+        Func(|args, env| {
+            if args.len() != 2 {
+                return Err("wrong number of arguments to dotimes".into());
+            }
+            let Num(times) = &args[0] else {
+                return Err("dotimes first param is not a number".into());
+            };
+            let Lambda(function) = &args[1] else {
+                return Err("dotimes second param is not a function".into());
+            };
+            for i in 0..*times {
+                eval_lambda_call(function, &vec![Num(i)], env)?;
+            }
+            Ok(List(None))
+        })
+    );
 
     env.insert(
         "def".into(),
@@ -144,12 +179,6 @@ fn init_toplevel() -> HashMap<String, Exp> {
             Ok(vec![])
         }),
     );
-
-    // let mut arg_list = vec![];
-    // for arg in args {
-    //     arg_list.push(eval(arg, env)?);
-    // }
-    // lambda.call(arg_list, env)
 
     fn run_in_let(bindings: &Exp, body: &[Exp], upper_env: &Arc<Env>) -> Result<Exp, LispErr> {
         let Vector(bindings) = bindings else {
@@ -197,7 +226,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "assert".into(),
-        Func(|args| {
+        Func(|args, _| {
             for x in args {
                 assert!(to_bool(x));
             }
@@ -207,7 +236,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "cons".into(),
-        Func(|args| {
+        Func(|args, _| {
             if args.len() != 2 {
                 return Err("Wrong arguments to cons".into());
             }
@@ -218,11 +247,11 @@ fn init_toplevel() -> HashMap<String, Exp> {
         }),
     );
 
-    env.insert("list".into(), Func(|args| Ok(List(list_from_slice(args)))));
+    env.insert("list".into(), Func(|args, _| Ok(List(list_from_slice(args)))));
 
     env.insert(
         "car".into(),
-        Func(|args| {
+        Func(|args, _| {
             if args.len() != 1 {
                 return Err("Wrong arguments to car".into());
             }
@@ -237,7 +266,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "cdr".into(),
-        Func(|args| {
+        Func(|args, _| {
             if args.len() != 1 {
                 return Err("Wrong arguments to cdr".into());
             }
@@ -285,7 +314,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "or".into(),
-        Func(|args| {
+        Func(|args, _| {
             if args.is_empty() {
                 return Err("or with empty args".into());
             }
@@ -302,7 +331,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "=".into(),
-        Func(|args| {
+        Func(|args, _| {
             if args.is_empty() {
                 return Err("no arguments".into());
             }

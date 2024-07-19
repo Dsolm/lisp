@@ -24,7 +24,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+        
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
@@ -44,7 +44,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
@@ -65,7 +65,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+        
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
@@ -84,7 +84,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+       
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
@@ -102,7 +102,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+     
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
         println!("{res:?}");
@@ -115,7 +115,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+    
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
         assert_eq!(format!("{res}"), "(1 PRINTING CONS IS UNIMPLEMENTED)");
@@ -128,7 +128,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+   
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
         assert_eq!(format!("{res}"), "(1 2 3 4 5 6 )");
@@ -142,7 +142,7 @@ mod tests {
         let tokens = tokenize(program.into());
         let mut iter = tokens.iter().peekable();
         let tree = parse_tokens(&mut iter).unwrap();
-        // This is for command line arguments.
+  
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
@@ -152,4 +152,23 @@ mod tests {
             panic!("Unexpected result.");
         }
     }
+
+    #[test]
+    fn test_strings() {
+        let program = "\"hello\"";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+  
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+
+        if let Str(hello) = res {
+            assert_eq!(hello, "hello");
+        } else {
+            panic!("Unexpected result.");
+        }
+    }
+
 }

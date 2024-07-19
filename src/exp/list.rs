@@ -38,7 +38,7 @@ pub fn push(val: Exp, list: List) -> List {
 
 pub fn next(list: &List) -> List {
     match list {
-        // The CDR of nil is nil, like in common lisp.
+        // The CDR of nil is nil
         None => None,
         Some(list) => {
             return Some(list.clone());

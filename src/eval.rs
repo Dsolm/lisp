@@ -20,10 +20,10 @@ fn eval_fun_call(func: NativeFunction, args: &[Exp], env: &Arc<Env>) -> Result<E
     for exp in args {
         arg_list.push(eval(exp, env)?);
     }
-    func(&arg_list)
+    func(&arg_list, env)
 }
 
-fn eval_lambda_call(lambda: &Lambda, args: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
+pub fn eval_lambda_call(lambda: &Lambda, args: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
     let mut arg_list = vec![];
     for arg in args {
         arg_list.push(eval(arg, env)?);
@@ -40,6 +40,7 @@ pub fn eval(exp: &Exp, env: &Arc<Env>) -> Result<Exp, LispErr> {
     match exp {
         Num(num) => Ok(Num(*num)),
         Symbol(sym) => env.get(sym),
+        Str(string) => Ok(Str(string.clone())),
         Vector(list) => {
             if list.len() == 0 {
                 return Ok(Vector(vec![]));

@@ -10,6 +10,19 @@ pub fn parse_tokens<'a>(
         None => return Err("Unexpected EOF while parsing".into()),
     };
     match token.as_str() {
+        "\"" => {
+            let mut list: Vec<String> = vec![];
+            while let Some(token) = tokens.next() {
+                if token == "\"" {
+                    break;
+                }
+                list.push(token.to_string());
+            }
+            // discard "
+            let string = list.join(" ");
+            Ok(Str(string))
+
+        },
         "(" => {
             let mut list = vec![];
             while *tokens.peek().unwrap() != ")" {

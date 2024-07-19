@@ -13,7 +13,7 @@ use parser::parse_tokens;
 use tokenizer::tokenize;
 
 pub fn main() {
-    let program = "(progn
+    let program = r##"(progn
 
    (print (* (* 1 1 1 (+ 1 1) 1 1) (* (* 1 1) (* 1 1))))
 
@@ -51,10 +51,24 @@ pub fn main() {
 
    (defun x (l) (print (identity l)) (x (+ l 1)))
 
+   (thread/spawn (lambda ()
+                     (print "hello from the thread")
+                     (dotimes 10 (lambda (i) (print "hiii")))))
+
+   (thread/spawn (lambda ()
+                     (print "hello from the other thread")
+                     (dotimes 10 (lambda (i) (print "hooo")))))
+
+   (dotimes 10 (lambda (x)
+       (thread/spawn (lambda ()
+                        (print "MORE THREADS")
+                        (dotimes 10 (lambda (i) (print x)))))))
+
    (assert (= (fibonacci 5) (fibonacci-with-let 5)))
 
    (fibonacci 5)
-   )";
+   )"##;
+
 
     let tokens = tokenize(program.into());
 
