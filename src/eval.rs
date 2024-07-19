@@ -11,7 +11,7 @@ pub fn eval_many(exps: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
         }
         eval(last, env)
     } else {
-        return Ok(List(vec![]));
+        return Ok(Vector(vec![]));
     }
 }
 
@@ -40,9 +40,9 @@ pub fn eval(exp: &Exp, env: &Arc<Env>) -> Result<Exp, LispErr> {
     match exp {
         Num(num) => Ok(Num(*num)),
         Symbol(sym) => env.get(sym),
-        List(list) => {
+        Vector(list) => {
             if list.len() == 0 {
-                return Ok(List(vec![]));
+                return Ok(Vector(vec![]));
             }
 
             let Symbol(first) = &list[0] else {

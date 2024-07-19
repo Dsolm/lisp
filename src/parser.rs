@@ -10,13 +10,6 @@ pub fn parse_tokens<'a>(
         None => return Err("Unexpected EOF while parsing".into()),
     };
     match token.as_str() {
-        "'" => {
-            // TODO: Create a make_list!() macro instead.
-            Ok(List(vec![
-                Symbol(String::from("quote")),
-                parse_tokens(tokens)?,
-            ]))
-        }
         "(" => {
             let mut list = vec![];
             while *tokens.peek().unwrap() != ")" {
@@ -24,7 +17,7 @@ pub fn parse_tokens<'a>(
             }
             // discard )
             let _ = tokens.next();
-            Ok(List(list))
+            Ok(Vector(list))
         }
         ")" => Err("Unexpected )".into()),
         token => Ok(atom(token)),
@@ -32,7 +25,7 @@ pub fn parse_tokens<'a>(
 }
 
 fn atom<'a>(token: &'a str) -> Exp {
-    if let Ok(num) = token.parse::<i32>() {
+    if let Ok(num) = token.parse::<i64>() {
         Num(num)
     } else {
         Symbol(token.to_string())

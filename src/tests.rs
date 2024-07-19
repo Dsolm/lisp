@@ -48,7 +48,7 @@ mod tests {
         let mut env = Arc::new(Env::new());
         let res = eval(&tree, &mut env).unwrap();
 
-        if let List(nil) = res {
+        if let Vector(nil) = res {
             assert!(nil.is_empty());
         } else {
             panic!("Unexpected result.");
@@ -78,6 +78,64 @@ mod tests {
 
     #[test]
     fn test_let_bindings() {
+        let program = "(let ((a 10) (b 100))
+                                (+ a b))";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+
+        if let Num(num) = res {
+            assert_eq!(num, 110);
+        } else {
+            panic!("Unexpected result.");
+        }
+    }
+
+    #[test]
+    fn test_nil() {
+        let program = "(print nil)";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+        println!("{res:?}");
+    }
+
+    #[test]
+    fn test_cons() {
+        let program = "(cons 1 2)";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+        assert_eq!(format!("{res}"), "(1 PRINTING CONS IS UNIMPLEMENTED)");
+    }
+
+    #[test]
+    fn test_list() {
+        let program = "(list 1 2 3 4 5 6)";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+        assert_eq!(format!("{res}"), "(1 2 3 4 5 6 )");
+    }
+
+    #[test]
+    fn test_lists_bindings() {
         let program = "(let ((a 10) (b 100))
                                 (+ a b))";
 

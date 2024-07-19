@@ -1,6 +1,9 @@
 use crate::eval::{eval, eval_many};
 use crate::exp::Lambda;
 use crate::exp::*;
+
+use crate::exp::list::list_from_slice;
+
 use std::vec::Vec;
 
 use std::collections::HashMap;
@@ -13,7 +16,6 @@ pub struct Env {
                              // processes can stem from one function call and share its state.
 }
 
-// TODO: Use Default for Evn instead of New
 impl Env {
     pub fn new() -> Self {
         Self {
@@ -34,7 +36,6 @@ impl Env {
     }
 
     pub fn get(&self, symbol: &str) -> Result<Exp, LispErr> {
-        // TODO: Our expressions should be trivially copyable.
         match self.local.get(symbol) {
             Some(exp) => Ok(exp.clone()),
             None => {
@@ -58,14 +59,27 @@ lazy_static! {
     pub static ref TOPLEVEL: RwLock<HashMap<String, Exp>> = RwLock::new(init_toplevel());
 }
 
+pub fn set_global(sym: &Exp, val: &Exp) -> Result<(), LispErr> {
+    if let Symbol(place) = sym {
+        let evaled = eval(val, &Arc::new(Env::new()))?;
+        {
+            let mut env = TOPLEVEL.write().unwrap();
+            env.insert(place.to_string(), evaled);
+        }
+        Ok(())
+    } else {
+        Err("Cannot set non-symbol".into())
+    }
+}
+
 fn init_toplevel() -> HashMap<String, Exp> {
     let mut env = HashMap::new();
     env.insert(
         "+".into(),
         Func(|args| {
             let x = args.iter().try_fold(0, |acc, x| match x {
-                Num(n) => Ok::<i32, LispErr>(acc + n),
-                _ => Err("invalid + argument".into()),
+                Num(n) => Ok::<i64, LispErr>(acc + n),
+                _ => Err(format!("invalid + argument: {}", x).into()),
             })?;
 
             Ok(Num(x))
@@ -82,7 +96,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
                 };
 
                 let x = rest.iter().try_fold(*first, |acc, x| match x {
-                    Num(n) => Ok::<i32, LispErr>(acc - n),
+                    Num(n) => Ok::<i64, LispErr>(acc - n),
                     _ => Err("invalid - argument".into()),
                 })?;
                 Ok(Num(x))
@@ -92,13 +106,15 @@ fn init_toplevel() -> HashMap<String, Exp> {
         }),
     );
 
-    env.insert("nil".into(), Bool(false));
+    env.insert("nil".into(), List(None));
+    env.insert("false".into(), Bool(false));
+    env.insert("true".into(), Bool(true));
 
     env.insert(
         "*".into(),
         Func(|args| {
             let x = args.iter().try_fold(1, |acc, x| match x {
-                Num(n) => Ok::<i32, LispErr>(acc * n),
+                Num(n) => Ok::<i64, LispErr>(acc * n),
                 _ => Err("invalid + argument".into()),
             })?;
 
@@ -110,9 +126,9 @@ fn init_toplevel() -> HashMap<String, Exp> {
         "print".into(),
         Func(|args| {
             for arg in args.iter() {
-                println!("{arg:?}");
+                println!("{arg}");
             }
-            Ok(List(vec![]))
+            Ok(Vector(vec![]))
         }),
     );
 
@@ -136,14 +152,14 @@ fn init_toplevel() -> HashMap<String, Exp> {
     // lambda.call(arg_list, env)
 
     fn run_in_let(bindings: &Exp, body: &[Exp], upper_env: &Arc<Env>) -> Result<Exp, LispErr> {
-        let List(bindings) = bindings else {
+        let Vector(bindings) = bindings else {
             return Err(format!("Expected let binding list, found {:?}", bindings).into());
         };
 
         let mut let_env = Env::from_upper(upper_env);
 
         for binding in bindings {
-            let List(binding) = binding else {
+            let Vector(binding) = binding else {
                 return Err(
                     "Let bindings should have this format ((name value) (name value)...)".into(),
                 );
@@ -158,7 +174,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
             let Symbol(name) = &binding[0] else {
                 return Err("Let cannot bind value to a non-symbol".into());
             };
-            let value = binding[1].clone();
+            let value = eval(&binding[1], upper_env)?;
             let_env.insert(name, value);
         }
 
@@ -180,9 +196,64 @@ fn init_toplevel() -> HashMap<String, Exp> {
     );
 
     env.insert(
+        "assert".into(),
+        Func(|args| {
+            for x in args {
+                assert!(to_bool(x));
+            }
+            Ok(List(None))
+        }),
+    );
+
+    env.insert(
+        "cons".into(),
+        Func(|args| {
+            if args.len() != 2 {
+                return Err("Wrong arguments to cons".into());
+            }
+            Ok(List(Some(Arc::new(Cons::new(
+                args[0].clone(),
+                args[1].clone(),
+            )))))
+        }),
+    );
+
+    env.insert("list".into(), Func(|args| Ok(List(list_from_slice(args)))));
+
+    env.insert(
+        "car".into(),
+        Func(|args| {
+            if args.len() != 1 {
+                return Err("Wrong arguments to car".into());
+            }
+            match &args[0] {
+                // car of nil is nil
+                List(None) => Ok(List(None)),
+                List(Some(list)) => Ok(list.car.clone()),
+                _ => Err("car argument is not a list".into()),
+            }
+        }),
+    );
+
+    env.insert(
+        "cdr".into(),
+        Func(|args| {
+            if args.len() != 1 {
+                return Err("Wrong arguments to cdr".into());
+            }
+            match &args[0] {
+                // cdr of nil is nil
+                List(None) => Ok(List(None)),
+                List(Some(list)) => Ok(list.cdr.clone()),
+                _ => Err("car argument is not a list".into()),
+            }
+        }),
+    );
+
+    env.insert(
         "defun".into(),
         Macro(|args, _| {
-            if let List(lambda_list) = &args[1] {
+            if let Vector(lambda_list) = &args[1] {
                 let mut llist: Vec<String> = vec![];
                 for arg in lambda_list {
                     llist.push(match arg {
@@ -192,7 +263,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
                 }
                 let body = Vec::from(&args[2..]);
                 set_global(&args[0], &Lambda(Lambda::new(llist, body)))?;
-                Ok(vec![]) // TODO: Use Nil instead
+                Ok(vec![])
             } else {
                 return Err("Invalid lambda list".into());
             }
@@ -203,15 +274,11 @@ fn init_toplevel() -> HashMap<String, Exp> {
         "if".into(),
         Macro(|args, env| {
             let evaled = eval(&args[0], env)?;
-            let is_false = match evaled {
-                Bool(false) => true,
-                _ => false,
-            };
-
-            if is_false {
-                Ok(vec![args[2].clone()])
-            } else {
+            let is_true = to_bool(&evaled);
+            if is_true {
                 Ok(vec![args[1].clone()])
+            } else {
+                Ok(vec![args[2].clone()])
             }
         }),
     );
@@ -224,10 +291,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
             }
 
             for arg in args {
-                let x: bool = match arg {
-                    Bool(x) => *x,
-                    _ => return Err("or argument is not bool".into()),
-                };
+                let x: bool = to_bool(arg);
                 if x == true {
                     return Ok(Bool(true));
                 }
@@ -243,7 +307,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
                 return Err("no arguments".into());
             }
 
-            let first: i32 = match args[0] {
+            let first: i64 = match args[0] {
                 Num(n) => n,
                 _ => return Err("= arg is not a number".into()),
             };
@@ -265,18 +329,4 @@ fn init_toplevel() -> HashMap<String, Exp> {
         }),
     );
     env
-}
-
-pub fn set_global(sym: &Exp, val: &Exp) -> Result<(), LispErr> {
-    // TODO: We should not panic, it could cause a deadlock.
-    if let Symbol(place) = sym {
-        let evaled = eval(val, &Arc::new(Env::new()))?;
-        {
-            let mut env = TOPLEVEL.write().unwrap();
-            env.insert(place.to_string(), evaled);
-        }
-        Ok(())
-    } else {
-        Err("Cannot set non-symbol".into())
-    }
 }

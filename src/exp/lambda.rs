@@ -15,7 +15,7 @@ impl Lambda {
     }
 
     pub fn from_list(args: &[Exp]) -> Result<Lambda, LispErr> {
-        if let List(lambda_list) = &args[0] {
+        if let Vector(lambda_list) = &args[0] {
             let mut llist: Vec<String> = vec![];
             for arg in lambda_list {
                 llist.push(match arg {
