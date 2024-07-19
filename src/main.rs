@@ -5,17 +5,19 @@ use Exp::*;
 
 type LispErr = Box<dyn Error>;
 
+type NativeFunction = fn(&[Exp]) -> Result<Exp, LispErr>;
+type Macro = fn(&[Exp], &Arc<Env>) -> Result<Vec<Exp>, LispErr>; 
 // Expressions should be trivially copiable.
 // In order to do that we need to implement Arc lists.
 #[derive(Clone, Debug)]
 pub enum Exp {
     Num(i32),
     Symbol(String),
-    // TODO: List is Rc, shared inmutable
+    // TODO: List is Rc, shared immutable
     List(Vec<Exp>),
     Lambda(Lambda), // Too big.
-    Func(fn(&[Exp], &Arc<Env>) -> Result<Exp, LispErr>),
-    Macro(fn(&[Exp], &Arc<Env>) -> Result<Vec<Exp>, LispErr>),
+    Func(NativeFunction),
+    Macro(Macro),
     Bool(bool),
 }
 
@@ -84,7 +86,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
     let mut env = HashMap::new();
     env.insert(
         "+".into(),
-        Func(|args, _| {
+        Func(|args| {
             let x = args.iter().try_fold(0, |acc, x| match x {
                 Num(n) => Ok::<i32, LispErr>(acc + n),
                 _ => Err("invalid + argument".into()),
@@ -96,7 +98,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "-".into(),
-        Func(|args, _| {
+        Func(|args| {
             if let Some((first, rest)) = args.split_first() {
                 let first = match first {
                     Num(n) => n,
@@ -117,16 +119,8 @@ fn init_toplevel() -> HashMap<String, Exp> {
     env.insert("nil".into(), Bool(false));
 
     env.insert(
-        "describe-env".into(),
-        Func(|_, env| {
-            println!("Inspection: {:?}", env);
-            Ok(List(vec![]))
-        }),
-    );
-
-    env.insert(
         "*".into(),
-        Func(|args, _| {
+        Func(|args| {
             let x = args.iter().try_fold(1, |acc, x| match x {
                 Num(n) => Ok::<i32, LispErr>(acc * n),
                 _ => Err("invalid + argument".into()),
@@ -138,7 +132,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "print".into(),
-        Func(|args, _| {
+        Func(|args| {
             for arg in args.iter() {
                 println!("{arg:?}");
             }
@@ -159,46 +153,53 @@ fn init_toplevel() -> HashMap<String, Exp> {
         }),
     );
 
-    // env.insert(
-    //     "set".to_string(),
-    //     Macro(
-    //         |args, env| {
-    //             if args.len() != 2 {
-    //                 return Err("Wrong arguments to set".into());
-    //             }
-    //             if let Symbol(place) = &args[0] {
-    //                 env.insert(place.clone(), args[1].clone());
-    //             }
-    //             return Ok(vec![]);
-    //         }
-    //     )
-    // );
 
-    // env.insert(
-    //     "let".into(),
-    //     Macro(|args, env| {
+    // let mut arg_list = vec![];
+    // for arg in args {
+    //     arg_list.push(eval(arg, env)?);
+    // }
+    // lambda.call(arg_list, env)
 
-    //         env.insert(
-    //             "lambda".into(),
-    //             Macro(|args, _| {
-    //                 if let List(lambda_list) = &args[0] {
-    //                     let mut llist: Vec<String> = vec![];
-    //                     for arg in lambda_list {
-    //                         llist.push(match arg {
-    //                             Symbol(str) => str.clone(),
-    //                             _ => return Err("Invalid lambda list".into()),
-    //                         });
-    //                     }
 
-    //                     let body = Vec::from(&args[1..]);
-    //                     Ok(vec![Lambda(Lambda::new(llist, body))])
-    //                 } else {
-    //                     return Err("Invalid lambda list".into());
-    //                 }
-    //             }),
-    //         );
-    //     })
-    // )
+    fn run_in_let(bindings: &Exp, body: &[Exp], upper_env: &Arc<Env>) -> Result<Exp, LispErr> {
+        let List(bindings) = bindings else {
+             return Err(format!("Expected let binding list, found {:?}", bindings).into());
+        };
+
+        let mut let_env = Env::from_upper(upper_env);
+
+        for binding in bindings {
+            let List(binding) = binding else {
+                return Err("Let bindings should have this format ((name value) (name value)...)".into());
+            };
+
+            if binding.len() != 2 {
+                return Err("Let bindings should have this format ((name value) (name value)...)".into());
+            }
+
+            let Symbol(name) = &binding[0] else {
+                return Err("Let cannot bind value to a non-symbol".into());
+            };
+            let value = binding[1].clone();
+            let_env.insert(name, value);
+        }
+
+        let let_env = Arc::new(let_env);
+        eval_many(body, &let_env)
+    }
+
+    env.insert(
+        "let".into(),
+        Macro(|args, env| {
+            if args.len() < 2 {
+                return Err("Not enough arguments passed to let".into());
+            }
+            let bindings = &args[0];
+            let body = &args[1..];
+            let res = run_in_let(bindings, body, env)?;
+            Ok(vec![res])
+        }),
+    );
 
     env.insert(
         "defun".into(),
@@ -239,7 +240,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "or".into(),
-        Func(|args, _| {
+        Func(|args| {
             if args.is_empty() {
                 return Err("or with empty args".into());
             }
@@ -259,7 +260,7 @@ fn init_toplevel() -> HashMap<String, Exp> {
 
     env.insert(
         "=".into(),
-        Func(|args, _| {
+        Func(|args| {
             if args.is_empty() {
                 return Err("no arguments".into());
             }
@@ -281,20 +282,8 @@ fn init_toplevel() -> HashMap<String, Exp> {
     env.insert(
         "lambda".into(),
         Macro(|args, _| {
-            if let List(lambda_list) = &args[0] {
-                let mut llist: Vec<String> = vec![];
-                for arg in lambda_list {
-                    llist.push(match arg {
-                        Symbol(str) => str.clone(),
-                        _ => return Err("Invalid lambda list".into()),
-                    });
-                }
-
-                let body = Vec::from(&args[1..]);
-                Ok(vec![Lambda(Lambda::new(llist, body))])
-            } else {
-                return Err("Invalid lambda list".into());
-            }
+            let lam = Lambda::from_list(args)?;
+            Ok(vec![Lambda(lam)])
         }),
     );
     env
@@ -317,6 +306,23 @@ impl Lambda {
         Lambda { args, body }
     }
 
+    pub fn from_list(args: &[Exp]) -> Result<Lambda, LispErr> {
+        if let List(lambda_list) = &args[0] {
+            let mut llist: Vec<String> = vec![];
+            for arg in lambda_list {
+                llist.push(match arg {
+                    Symbol(str) => str.clone(),
+                    _ => return Err("Invalid lambda list".into()),
+                });
+            }
+
+            let body = Vec::from(&args[1..]);
+            Ok(Lambda::new(llist, body))
+        } else {
+            return Err("Invalid lambda list".into());
+        }
+    }
+
     pub fn call(self: &Self, args: Vec<Exp>, env: &Arc<Env>) -> Result<Exp, LispErr> {
         if self.args.len() != args.len() {
             return Err("Wrong number of function arguments".into());
@@ -331,7 +337,7 @@ impl Lambda {
 }
 
 fn set_global(sym: &Exp, val: &Exp) -> Result<(), LispErr> {
-    // TODO: We should not panic.
+    // TODO: We should not panic, it could cause a deadlock.
     if let Symbol(place) = sym {
         let evaled = eval(val, &Arc::new(Env::new()))?;
         {
@@ -381,7 +387,7 @@ fn parse_tokens<'a>(
     }
 }
 
-fn eval_many(exps: &Vec<Exp>, env: &Arc<Env>) -> Result<Exp, LispErr> {
+fn eval_many(exps: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
     if let Some((last, exps)) = exps.split_last() {
         for exp in exps {
             eval(exp, env)?;
@@ -390,6 +396,27 @@ fn eval_many(exps: &Vec<Exp>, env: &Arc<Env>) -> Result<Exp, LispErr> {
     } else {
         return Ok(List(vec![]));
     }
+}
+
+fn eval_fun_call(func: NativeFunction, args: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
+    let mut arg_list = vec![];
+    for exp in args {
+        arg_list.push(eval(exp, env)?);
+    }
+    func(&arg_list)
+}
+
+fn eval_lambda_call(lambda: &Lambda, args: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
+    let mut arg_list = vec![];
+    for arg in args {
+        arg_list.push(eval(arg, env)?);
+    }
+    lambda.call(arg_list, env)
+}
+
+fn eval_macro(macr: Macro, args: &[Exp], env: &Arc<Env>) -> Result<Exp, LispErr> {
+    let macroexpand = macr(args, env)?;
+    eval_many(&macroexpand, env)
 }
 
 fn eval(exp: &Exp, env: &Arc<Env>) -> Result<Exp, LispErr> {
@@ -407,24 +434,9 @@ fn eval(exp: &Exp, env: &Arc<Env>) -> Result<Exp, LispErr> {
 
             let rest = &list[1..];
             match env.get(first)? {
-                Func(fun) => {
-                    let mut arg_list = vec![];
-                    for exp in rest {
-                        arg_list.push(eval(exp, env)?);
-                    }
-                    fun(&arg_list, env)
-                }
-                Lambda(ref lambda) => {
-                    let mut arg_list = vec![];
-                    for exp in rest {
-                        arg_list.push(eval(exp, env)?);
-                    }
-                    lambda.call(arg_list, env)
-                }
-                Macro(macr) => {
-                    let macroexpand = macr(rest, env)?;
-                    eval_many(&macroexpand, env)
-                }
+                Func(fun) => eval_fun_call(fun, rest, env),
+                Lambda(ref lambda) => eval_lambda_call(lambda, rest, env),
+                Macro(macr) => eval_macro(macr, rest, env),
                 _ => Err("Attempted to call non-callable object".into()),
             }
         }
@@ -516,8 +528,45 @@ mod tests {
         } else {
             panic!("Unexpected result.");
         }
+    }
 
-        
+    #[test]
+    fn test_let_no_bindings() {
+        let program = "(progn
+         (let ()
+            2)
+         )";
 
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+
+        if let Num(two) = res {
+            assert_eq!(two, 2);
+        } else {
+            panic!("Unexpected result.");
+        }
+    }
+
+    #[test]
+    fn test_let_bindings() {
+        let program = "(let ((a 10) (b 100))
+                                (+ a b))";
+
+        let tokens = tokenize(program.into());
+        let mut iter = tokens.iter().peekable();
+        let tree = parse_tokens(&mut iter).unwrap();
+        // This is for command line arguments.
+        let mut env = Arc::new(Env::new());
+        let res = eval(&tree, &mut env).unwrap();
+
+        if let Num(num) = res {
+            assert_eq!(num, 110);
+        } else {
+            panic!("Unexpected result.");
+        }
     }
 }
